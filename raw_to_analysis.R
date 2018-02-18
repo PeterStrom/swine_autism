@@ -44,4 +44,6 @@ prescr <- haven::read_sas("../data/ut_lmed_10516_2017.sas7bdat")
 codreg <- haven::read_sas("../data/ut_dors_10516_2017.sas7bdat")
 outpat <- haven::read_sas("../data/ut_par_ov_10516_2017.sas7bdat")
 in_pat <- haven::read_sas("../data/ut_par_sv_10516_2017.sas7bdat")
-mfr <- read.csv("../data/mfr.csv")
+fg_inf <- haven::read_sas("../data/fg_info.sas7bdat")
+mf_reg <- haven::read_sas("../data/mfr.sas7bdat")
+
