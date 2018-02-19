@@ -35,11 +35,6 @@ rm(wants, has)
 # #############################################################################
 # Read data
 # #############################################################################
-# prescrtxt <- read.table("../data/ut_lmed_10516_2017.txt",
-#                         header = TRUE,
-#                         sep = "\t",
-#                         stringsAsFactors = FALSE,
-#                         fill=TRUE)
 prescr <- haven::read_sas("../data/ut_lmed_10516_2017.sas7bdat")
 codreg <- haven::read_sas("../data/ut_dors_10516_2017.sas7bdat")
 outpat <- haven::read_sas("../data/ut_par_ov_10516_2017.sas7bdat")
@@ -47,3 +42,16 @@ in_pat <- haven::read_sas("../data/ut_par_sv_10516_2017.sas7bdat")
 fg_inf <- haven::read_sas("../data/fg_info.sas7bdat")
 mf_reg <- haven::read_sas("../data/mfr.sas7bdat")
 
+# #############################################################################
+# Remove child ID with NA (still born) from medical birth register.
+# #############################################################################
+mf_reg = filter(mf_reg, !is.na('lpnr_BARN'))
+
+# #############################################################################
+# Join data.
+# #############################################################################
+dta <- inner_join(fg_inf, select(mf_reg, -lpnr_mor), by='lpnr_BARN')
+dta$age_at_vacc <- lubridate::ymd(dta$BFODDAT) - dta$vdat1
+any(is.na(lubridate::ymd(dta$BFODDAT)))
+summary(lubridate::ymd(dta$BFODDAT))
+           
