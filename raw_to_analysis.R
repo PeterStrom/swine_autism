@@ -66,7 +66,7 @@ dta <- subset(dta, select=c("lpnr_BARN", "lpnr_mor", "vdat1", "educ",
 
 # Dates
 dta$BFODDAT <- lubridate::ymd(dta$BFODDAT)
-dta$age_at_vacc <- dta$BFODDAT - dta$vdat1
+dta$age_at_vacc <- dta$BFODDAT - dta$vdat1  # difference in days 
 dta$MFODDAT <- trimws(dta$MFODDAT)
 dta$MFODDAT <- ifelse(nchar(dta$MFODDAT)==6, 
                       paste(dta$MFODDAT, "15", sep=""),
@@ -124,9 +124,9 @@ dta$moth_comorb <- dta$lpnr_mor %in% moth_comorb
 # Dates
 # #############################################################################
 ## Remove obviously wrong values on vdat1
-get.rows <-  dta$vdat1 >= as.Date("2009-10-01")
-get.rows[is.na(get.rows)] <- TRUE
-dta <- dta[get.rows, ]
+tmp <- dta$vdat1 >= as.Date("2009-10-01")
+tmp[is.na(tmp)] <- TRUE
+dta <- dta[tmp, ]
 excluded <- rbind(excluded, list("Wrong vaccin date", dim(dta)[1]))
 
 # #############################################################################
