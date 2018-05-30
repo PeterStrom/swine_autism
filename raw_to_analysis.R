@@ -22,16 +22,7 @@
 # #############################################################################
 
 # #############################################################################
-# Packages
-# #############################################################################
-wants <- c("tidyverse")
-has <- wants %in% rownames(installed.packages())
-if(any(!has)) install.packages(wants[!has])
-lapply(wants, require, character.only = TRUE)
-rm(wants, has)
-
-# #############################################################################
-# Read dta
+# Read data
 # #############################################################################
 codreg <- haven::read_sas("../data/ut_dors_10516_2017.sas7bdat")
 outpat <- haven::read_sas("../data/ut_par_ov_10516_2017.sas7bdat")
@@ -48,7 +39,7 @@ load('../data/lpnr_malformation.Rdata')
 mf_reg = filter(mf_reg, !is.na('lpnr_BARN'))
 
 # #############################################################################
-# Join dta.
+# Join data.
 # #############################################################################
 # Keep track of excluded subjects.
 excluded <- data.frame(Reason = "All in FG", N = dim(fg_inf)[1], 
@@ -68,7 +59,7 @@ dta <- subset(dta, select=c("lpnr_BARN", "lpnr_mor", "vdat1", "educ",
 dta$BFODDAT <- lubridate::ymd(dta$BFODDAT)
 dta$age_at_vacc <- dta$BFODDAT - dta$vdat1
 dta$MFODDAT <- trimws(dta$MFODDAT)
-dta$MFODDAT <- ifelse(nchar(dta$MFODDAT)==6, 
+dta$MFODDAT <- ifelse(nchar(dta$MFODDAT) == 6, 
                       paste(dta$MFODDAT, "15", sep=""),
                       dta$MFODDAT)
 dta$MFODDAT <- lubridate::ymd(dta$MFODDAT) 
@@ -76,10 +67,9 @@ dta$Age_mother <- as.numeric((dta$BFODDAT - dta$MFODDAT) / 365.25)
 dta$INDATMHV <- ifelse(nchar(dta$INDATMHV) == 4, NA, dta$INDATMHV)
 dta$INDATMHV <- lubridate::ymd(dta$INDATMHV) 
 
-# restrict to 2001-01-01 to 2011-12-31 due to coverage in oppen/slutenvard.
-# (email 2015-09-15).
-dta <- subset(dta, BFODDAT >= "2001-01-01" & BFODDAT < "2012-01-01") 
-excluded <- rbind(excluded, list("Not in 2001_2011", dim(dta)[1]))
+# Restrict to 2001-01-01 and onwards due to coverage in outpatient register.
+dta <- subset(dta, BFODDAT >= start_outpat) 
+excluded <- rbind(excluded, list("Born before 2001", dim(dta)[1]))
 
 # Not eligeble to participate 
 dta <- subset(dta, excl_reason == "Eligible", select = -excl_reason)
@@ -98,9 +88,6 @@ excluded <- rbind(excluded, list("Missing pregnancy days", dim(dta)[1]))
 # Exclude missing/unknown sex 
 dta <- dta[dta$KON %in% 1:2, ]
 excluded <- rbind(excluded, list("Missing/unknown sex", dim(dta)[1]))
-
-# Calculate excluded for each step of exclusion.
-excluded$removed <- lag(excluded$N) - excluded$N
 
 # #############################################################################
 # Create indicator for comorbidity in the mother.
@@ -127,17 +114,18 @@ dta$moth_comorb <- dta$lpnr_mor %in% moth_comorb
 get.rows <-  dta$vdat1 >= as.Date("2009-10-01")
 get.rows[is.na(get.rows)] <- TRUE
 dta <- dta[get.rows, ]
-excluded <- rbind(excluded, list("Wrong vaccin date", dim(dta)[1]))
+excluded <- rbind(excluded, list("Wrong vaccine date", dim(dta)[1]))
+
+# Calculate excluded for each step of exclusion.
+excluded$removed <- lag(excluded$N) - excluded$N
 
 # #############################################################################
 # Create variables
 # #############################################################################
-dta$BMI <- dta$MVIKT/(dta$MLANGD/100)^2
-
+dta$BMI <- dta$MVIKT / (dta$MLANGD / 100)^2
 dta$Paritet_cat <- ifelse(dta$PARITET >=3, "3+", dta$PARITET)
 dta$Ethnicity <- ifelse(dta$ethnew == 1, "Swe", "NoSwe")
 dta$Dispink_cat <- ifelse(dta$dispink < 200000, "<200000", ">=200000")
-
 dta$MotherAgeAtBirth <- cut(as.numeric(dta$Age_mother), 
                              breaks = c(0, 25, 30, 35, 200),
                              labels=c("<25", "25 - 29", "30-34", ">35"))
@@ -146,9 +134,11 @@ dta$BMI <- cut(dta$BMI,
                 labels=c("<18.5", "18.5 - <25", "25 - <30", ">30"))
 dta$Sex <- as.factor(dta$KON)
 levels(dta$Sex) <- c("Male", "Female")
-dta$SmokingAtFirstVisit <- as.factor(dta$ROK1)
+dta$SmokingAtFirstVisit <- dta$ROK1
+dta$SmokingAtFirstVisit[dta$SmokingAtFirstVisit == ""] <- NA
+dta$SmokingAtFirstVisit <- as.factor(dta$SmokingAtFirstVisit)
 levels(dta$SmokingAtFirstVisit) <- c("Non-smoker", "1-9 cig/day", "10+ cig/day")
-dta$SmokingAtFirstVisit2 <- dta$ROK1
+dta$SmokingAtFirstVisit2 <- as.numeric(dta$ROK1)
 dta$SmokingAtFirstVisit2[dta$SmokingAtFirstVisit2 %in% 2:3] <- "Smoker"
 dta$SmokingAtFirstVisit2[dta$SmokingAtFirstVisit2 == 1] <- "Non-smoker"
 dta$Ethnicity <- as.factor(dta$Ethnicity)
@@ -178,3 +168,72 @@ dta$Vacc22 <- ifelse(is.na(dta$vdat1 ) |
 
 dta$BirthYear <- lubridate::year(dta$BFODDAT)
 
+# #############################################################################
+# Create outcome based on ICD10 codes in in- and out patient registers.
+# See Appendix for ICD10 (F-codes) for correponding F-numbers below.
+#
+# For population analyses we only consider diagnoses after 2009, and for the
+# sibling analyses we only consider diagnoses after 2001 due to coverge of the 
+# outpatient regiter. Therefore it suffices to consider ICD-10 (i.e. 1997-).
+# #############################################################################
+ICD10 <- paste(paste0('F', c(840:845, 848, 849)), collapse = '|')
+vars <- c('lopnr', 'diagnos', 'INDATUM')
+outcome <- rbind(outpat[vars], in_pat[vars])
+
+fun_ICD10 <- function(dta, start, ICD10_codes){
+  # Collect ID and first date of diagnosis.
+  # 
+  # Args:
+  #   dta: (data) in- and outpatient.
+  #   start: min datum to be considered.
+  #   ICD10_codes: (chr) if multiple, separate with |.
+  # 
+  # Return:
+  #   A data_frame with ID, diagnoses and (first) date of any diagnose
+  #   considered.
+  d <- dta %>% 
+    filter(diagnos != "" & INDATUM >= start) %>%
+    filter(grepl(ICD10_codes, diagnos)) %>%
+    group_by(lopnr) %>%
+    arrange(lopnr, INDATUM) %>%
+    filter(row_number() == 1) %>%
+    ungroup()
+  d$lopnr <- as.numeric(d$lopnr)
+  return(d)
+}
+
+# All ICD10 codes specified in the analysis plan, and restrict to ICD10 code 
+# 'F840' (infant autism). 
+outcome_ICD10 <- fun_ICD10(dta=outcome, start=start_outpat, ICD10_codes=ICD10)
+outcome_F84_0 <- fun_ICD10(dta=outcome, start=start_outpat, ICD10_codes='F840')
+
+# #############################################################################
+# Join event and censoring data.
+# #############################################################################
+codreg <- codreg %>%
+  select(c(lopnr, DODSDATN)) %>%
+  filter(DODSDATN >= start_outpat)
+
+codreg$lopnr <- as.numeric(codreg$lopnr)
+
+colnames(dta)[colnames(dta)=="lpnr_BARN"] <- "lopnr"  # ID for offspring
+dta <- left_join(dta, codreg, by = "lopnr")
+dta$exit <- datum_exit
+
+# Create separate data sets for onlt 'F84.0' and all relevant ICD10 codes.
+dta_ICD10 <- left_join(dta, outcome_ICD10, by = "lopnr")
+dta_F84_0 <- left_join(dta, outcome_F84_0, by = "lopnr")
+
+# #############################################################################
+# Create age at exit variable and indicator of event/censoring.
+# #############################################################################
+dta_ICD10$exit <- with(dta_ICD10, pmin(exit, DODSDATN, INDATUM, na.rm = TRUE))
+dta_ICD10$event <- with(dta_ICD10, ifelse(!is.na(INDATUM) & exit == INDATUM,
+                                          1, 0))
+
+dta_F84_0$exit <- with(dta_F84_0, pmin(exit, DODSDATN, INDATUM, na.rm = TRUE))
+dta_F84_0$event <- with(dta_F84_0, ifelse(!is.na(INDATUM) & exit == INDATUM,
+                                          1, 0))
+
+dta_ICD10$exit_age <- with(dta_ICD10, as.numeric((exit - BFODDAT) / 365.25))
+dta_F84_0$exit_age <- with(dta_F84_0, as.numeric((exit - BFODDAT) / 365.25))
