@@ -35,11 +35,6 @@ dta_sib <- dta_ICD10 %>%
   filter(any(event)) %>%
   ungroup()
 
-excluded <- rbind(excluded, list("Not population study", dim(dta)[1] - dim(dta_pop)[1], 
-                                 dim(dta_pop)[1]))
-excluded <- rbind(excluded, list("Not sibling study", dim(dta)[1] - dim(dta_sib)[1], 
-                                 dim(dta_sib)[1]))
-
 # #############################################################################
 # Table 1.
 #
@@ -79,7 +74,7 @@ write.csv(t1_3, file = "../output/Table1_sib.csv")
 # #############################################################################
 # Table 2 and 3.
 # #############################################################################
-analysis <- function(dta, sib, vacc_period, subanalysis){
+analysis <- function(dta, sib, vacc_period){
   # Cox estimated hazard ratios for autism by swine flu vaccine during
   # pregnancy.
   # 
@@ -87,7 +82,6 @@ analysis <- function(dta, sib, vacc_period, subanalysis){
   #   dta: (data) dta_ICD10 or dta_F84_0.
   #   sib: (bool) if TRUE sibling analysis else cohort analysis.
   #   vacc_period: exposure column in dta.
-  #   subanalysis: main analysis or or a subanalysis in the analysis plan.
   #
   # Return: N, events (%), Crude HR (95% CI), Adjusted HR (95% CI), p(prop_haz).
   
@@ -167,11 +161,79 @@ analysis <- function(dta, sib, vacc_period, subanalysis){
   return(df)
 } 
 
+expos <- list('VaccFull', 'Vacc14', 'Vacc22')
 
-analysis(dta=dta_F84_0, sib=T, vacc_period='VaccFull', subanalysis=NULL)
-analysis(dta=dta_ICD10, sib=T, vacc_period='VaccFull', subanalysis=NULL)
-analysis(dta=dta_F84_0, sib=F, vacc_period='VaccFull', subanalysis=NULL)
-analysis(dta=dta_ICD10, sib=F, vacc_period='VaccFull', subanalysis=NULL)
+table_HR <- function(subanalysis, sib){
+  # Generate table 2 and 3: HR for poplation and sibling analyses
+  # 
+  # Args:
+  #   subanalysis:
+  #     0. Main analysis
+  #     1. Remove all mothers with autism (defined by the same ICD-10 codes as
+  #        for the offsprings) or severe comorbidity (the same definition as
+  #        in [Ludvigsson, 2016]).
+  #     2. Only consider one ICD-10 code (F84.0 “infant autism”)
+  #     3. Remove the three counties (Kalmar, Värmland, and Norrbotten) with
+  #        somewhat uncertain vaccine data.
+  #   sib: (bool) if TRUE sibling analysis else cohort analysis.
+  # 
+  # Return: Table 2 or 3 depending on argument 'sib'.
+  if (subanalysis == 0){
+    dta_ana <- dta_ICD10
+  }
+  
+  if (subanalysis == 1){
+    dta_ana <- dta_ICD10 %>%
+      filter(!moth_comorb)
+  }
+  
+  if (subanalysis == 2){
+    dta_ana <- dta_F84_0
+  }
+  
+  if (subanalysis == 3){
+    dta_ana <- dta_ICD10 %>%
+      filter(!(lan %in% c(8, 17, 25)))
+  }
+  
+  l <- lapply(expos,
+              function(x){
+                analysis(dta=dta_ana, sib=sib, vacc_period=x)
+              })
+  return(bind_rows(l))
+}
+
+# Generate table 2 and subanalyses
+t2_0 <- table_HR(subanalysis = 0, sib = FALSE)
+t2_1 <- table_HR(subanalysis = 1, sib = FALSE)
+t2_2 <- table_HR(subanalysis = 2, sib = FALSE)
+t2_3 <- table_HR(subanalysis = 3, sib = FALSE)
+
+# Generate table 3 and subanalyses
+t3_0 <- table_HR(subanalysis = 0, sib = TRUE)
+t3_1 <- table_HR(subanalysis = 1, sib = TRUE)
+t3_2 <- table_HR(subanalysis = 2, sib = TRUE)
+t3_3 <- table_HR(subanalysis = 3, sib = TRUE)
+
+# Write table 2
+write.xlsx(t2_0, "../output/Table2.xlsx", sheetName = "Main analysis",
+           row.names = FALSE)
+write.xlsx(t2_1, "../output/Table2.xlsx", sheetName = "Mother comorb",
+           row.names = FALSE, append = TRUE)
+write.xlsx(t2_2, "../output/Table2.xlsx", sheetName = "Only F84.0",
+           row.names = FALSE, append = TRUE)
+write.xlsx(t2_3, "../output/Table2.xlsx", sheetName = "County",
+           row.names = FALSE, append = TRUE)
+
+# Write table 3
+write.xlsx(t3_0, "../output/Table3.xlsx", sheetName = "Main analysis",
+           row.names = FALSE)
+write.xlsx(t3_1, "../output/Table3.xlsx", sheetName = "Mother comorb",
+           row.names = FALSE, append = TRUE)
+write.xlsx(t3_2, "../output/Table3.xlsx", sheetName = "Only F84.0",
+           row.names = FALSE, append = TRUE)
+write.xlsx(t3_3, "../output/Table3.xlsx", sheetName = "County",
+           row.names = FALSE, append = TRUE)
 
 # #############################################################################
 # Kaplan-Meier Plot.
