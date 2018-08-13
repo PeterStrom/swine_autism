@@ -44,6 +44,12 @@ mf_reg = filter(mf_reg, !is.na('lpnr_BARN'))
 # Keep track of excluded subjects.
 excluded <- data.frame(Reason = "All in FG", N = dim(fg_inf)[1], 
                        stringsAsFactors = FALSE)
+
+# Restrict to 2001-01-01 and onwards due to coverage in outpatient register.
+mf_reg$BFODDAT <- lubridate::ymd(mf_reg$BFODDAT)
+mf_reg <- subset(mf_reg, BFODDAT >= start_outpat) 
+excluded <- rbind(excluded, list("Born before 2001", dim(mf_reg)[1]))
+
 # MFR
 dta <- inner_join(fg_inf, select(mf_reg, -lpnr_mor), by='lpnr_BARN')
 excluded <- rbind(excluded, list("Not in MFR", dim(dta)[1]))
@@ -56,7 +62,6 @@ dta <- subset(dta, select=c("lpnr_BARN", "lpnr_mor", "vdat1", "educ",
                             "INDATMHV"))
 
 # Dates
-dta$BFODDAT <- lubridate::ymd(dta$BFODDAT)
 dta$age_at_vacc <- dta$BFODDAT - dta$vdat1  # difference in days 
 dta$MFODDAT <- trimws(dta$MFODDAT)
 dta$MFODDAT <- ifelse(nchar(dta$MFODDAT) == 6, 
@@ -66,10 +71,6 @@ dta$MFODDAT <- lubridate::ymd(dta$MFODDAT)
 dta$Age_mother <- as.numeric((dta$BFODDAT - dta$MFODDAT) / 365.25)
 dta$INDATMHV <- ifelse(nchar(dta$INDATMHV) == 4, NA, dta$INDATMHV)
 dta$INDATMHV <- lubridate::ymd(dta$INDATMHV) 
-
-# Restrict to 2001-01-01 and onwards due to coverage in outpatient register.
-dta <- subset(dta, BFODDAT >= start_outpat) 
-excluded <- rbind(excluded, list("Born before 2001", dim(dta)[1]))
 
 # Not eligeble to participate 
 dta <- subset(dta, excl_reason == "Eligible", select = -excl_reason)
@@ -116,8 +117,6 @@ tmp[is.na(tmp)] <- TRUE
 dta <- dta[tmp, ]
 excluded <- rbind(excluded, list("Wrong vaccin date", dim(dta)[1]))
 
-# Calculate excluded for each step of exclusion.
-excluded$removed <- lag(excluded$N) - excluded$N
 # #############################################################################
 # Create variables
 # #############################################################################
@@ -146,6 +145,12 @@ dta$PostHighSchool <- dta$educ
 dta$PostHighSchool[dta$PostHighSchool %in% 1:3] <- "No"
 dta$PostHighSchool[dta$PostHighSchool %in% 4:6] <- "Yes"
 dta$PostHighSchool[dta$PostHighSchool == 9] <- NA
+
+# Remove missing on BMI and smoking
+dta <- dta[!is.na(dta$SmokingAtFirstVisit2), ]
+excluded <- rbind(excluded, list("Missing Smoking", dim(dta)[1]))
+dta <- dta[!is.na(dta$BMI), ]
+excluded <- rbind(excluded, list("Missing BMI", dim(dta)[1]))
 
 # Vaccination and dates (14 and 8 are including last week)
 # According to Sven C (mail 2015-10-02) should first trimester be 97 days = 13w + 6 days
@@ -236,3 +241,7 @@ dta_F84_0$event <- with(dta_F84_0, ifelse(!is.na(INDATUM) & exit == INDATUM,
 
 dta_ICD10$exit_age <- with(dta_ICD10, as.numeric((exit - BFODDAT) / 365.25))
 dta_F84_0$exit_age <- with(dta_F84_0, as.numeric((exit - BFODDAT) / 365.25))
+
+# Calculate excluded for each step of exclusion.
+excluded$removed <- lag(excluded$N) - excluded$N
+excluded <- rbind(excluded, c('Total mothers: ', length(unique(dta$lpnr_mor)), NA))

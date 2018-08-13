@@ -235,6 +235,9 @@ write.xlsx(t3_2, "../output/Table3.xlsx", sheetName = "Only F84.0",
 write.xlsx(t3_3, "../output/Table3.xlsx", sheetName = "County",
            row.names = FALSE, append = TRUE)
 
+# Write excluded
+write.xlsx(excluded, "../output/excluded.xlsx", row.names = FALSE)
+
 # #############################################################################
 # Kaplan-Meier Plot.
 # #############################################################################
