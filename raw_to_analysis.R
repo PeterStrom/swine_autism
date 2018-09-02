@@ -34,6 +34,14 @@ moth_comorb_in <- read.csv("../data/slutenvard_comorb2.csv")
 load('../data/lpnr_malformation.Rdata')
 
 # #############################################################################
+# Helper function for exclusion criteria for flowchart.
+# #############################################################################
+f_e <- function(x){
+  # Subset data to represent the population cohort.
+  subset(x, BFODDAT >= datum_start & BFODDAT <= datum_end)
+}
+
+# #############################################################################
 # Remove child ID with NA (still born) from medical birth register.
 # #############################################################################
 mf_reg = filter(mf_reg, !is.na('lpnr_BARN'))
@@ -41,18 +49,16 @@ mf_reg = filter(mf_reg, !is.na('lpnr_BARN'))
 # #############################################################################
 # Join data.
 # #############################################################################
-# Keep track of excluded subjects.
-excluded <- data.frame(Reason = "All in FG", N = dim(fg_inf)[1], 
-                       stringsAsFactors = FALSE)
-
 # Restrict to 2001-01-01 and onwards due to coverage in outpatient register.
 mf_reg$BFODDAT <- lubridate::ymd(mf_reg$BFODDAT)
 mf_reg <- subset(mf_reg, BFODDAT >= start_outpat) 
-excluded <- rbind(excluded, list("Born before 2001", dim(mf_reg)[1]))
 
 # MFR
 dta <- inner_join(fg_inf, select(mf_reg, -lpnr_mor), by='lpnr_BARN')
-excluded <- rbind(excluded, list("Not in MFR", dim(dta)[1]))
+
+# Keep track of excluded subjects.
+excluded <- data.frame(Reason = "Population cohort", N = dim(f_e(dta))[1], 
+                       stringsAsFactors = FALSE)
 
 # Select subset of columns in cohort 
 dta <- subset(dta, select=c("lpnr_BARN", "lpnr_mor", "vdat1", "educ",
@@ -74,21 +80,21 @@ dta$INDATMHV <- lubridate::ymd(dta$INDATMHV)
 
 # Not eligeble to participate 
 dta <- subset(dta, excl_reason == "Eligible", select = -excl_reason)
-excluded <- rbind(excluded, list("Not Eligable (FG)", dim(dta)[1]))
+excluded <- rbind(excluded, list("Not Eligable (FG)", dim(f_e(dta))[1]))
 
 # Exclude chromosome caused malformation (Jonas definies these criteria)
 # and any malformation defined in [Ludvigsson, 2016].
 exc_mal <- unique(c(exc, missb))
 dta <- dta[!(dta$lpnr_BARN %in% exc_mal), ]
-excluded <- rbind(excluded, list("Chromosome + Malformation", dim(dta)[1]))
+excluded <- rbind(excluded, list("Chromosome + Malformation", dim(f_e(dta))[1]))
 
 # Exclude missing pregnancy length GRDBS 
 dta <- dta[!is.na(dta$GRDBS), ]
-excluded <- rbind(excluded, list("Missing pregnancy days", dim(dta)[1]))
+excluded <- rbind(excluded, list("Missing pregnancy days", dim(f_e(dta))[1]))
 
 # Exclude missing/unknown sex 
 dta <- dta[dta$KON %in% 1:2, ]
-excluded <- rbind(excluded, list("Missing/unknown sex", dim(dta)[1]))
+excluded <- rbind(excluded, list("Missing/unknown sex", dim(f_e(dta))[1]))
 
 # #############################################################################
 # Create indicator for comorbidity in the mother.
@@ -115,7 +121,7 @@ dta$moth_comorb <- dta$lpnr_mor %in% moth_comorb
 tmp <- dta$vdat1 >= as.Date("2009-10-01")
 tmp[is.na(tmp)] <- TRUE
 dta <- dta[tmp, ]
-excluded <- rbind(excluded, list("Wrong vaccin date", dim(dta)[1]))
+excluded <- rbind(excluded, list("Wrong vaccin date", dim(f_e(dta))[1]))
 
 # #############################################################################
 # Create variables
@@ -148,9 +154,9 @@ dta$PostHighSchool[dta$PostHighSchool == 9] <- NA
 
 # Remove missing on BMI and smoking
 dta <- dta[!is.na(dta$SmokingAtFirstVisit2), ]
-excluded <- rbind(excluded, list("Missing Smoking", dim(dta)[1]))
+excluded <- rbind(excluded, list("Missing Smoking", dim(f_e(dta))[1]))
 dta <- dta[!is.na(dta$BMI), ]
-excluded <- rbind(excluded, list("Missing BMI", dim(dta)[1]))
+excluded <- rbind(excluded, list("Missing BMI", dim(f_e(dta))[1]))
 
 # Vaccination and dates (14 and 8 are including last week)
 # According to Sven C (mail 2015-10-02) should first trimester be 97 days = 13w + 6 days
@@ -244,4 +250,4 @@ dta_F84_0$exit_age <- with(dta_F84_0, as.numeric((exit - BFODDAT) / 365.25))
 
 # Calculate excluded for each step of exclusion.
 excluded$removed <- lag(excluded$N) - excluded$N
-excluded <- rbind(excluded, c('Total mothers: ', length(unique(dta$lpnr_mor)), NA))
+excluded <- rbind(excluded, c('Total mothers: ', length(unique(f_e(dta)$lpnr_mor)), NA))

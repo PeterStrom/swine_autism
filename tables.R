@@ -66,10 +66,38 @@ t1_2 <- print(table1[[2]], showAllLevels = TRUE, noSpaces = TRUE,
 t1_3 <- print(table1[[3]], showAllLevels = TRUE, noSpaces = TRUE,
               printToggle = FALSE)
 
-# Save to a CSV file
-write.csv(t1_1, file = "../output/Table1.csv")
-write.csv(t1_2, file = "../output/Table1_pop.csv")
-write.csv(t1_3, file = "../output/Table1_sib.csv")
+# #############################################################################
+# Table A1.
+#
+# Using the package 'tableone' by Max Gordon.
+# #############################################################################
+vars <- c("MotherAgeAtBirth",
+          "BMI",
+          "Sex",
+          "Paritet_cat",
+          "SmokingAtFirstVisit",
+          "Ethnicity",
+          "DisposableIncome",
+          "VaccFull",
+          "Vacc22",
+          "Vacc14",
+          "exit_age")
+
+table1 <- lapply(list(dta_ICD10, dta_pop, dta_sib),
+                 function(d){
+                   CreateTableOne(data=d,
+                                  vars=vars,
+                                  factorVars=vars[1:10],
+                                  strata=c("event"),
+                                  includeNA = TRUE)
+                 })
+
+tA1_1 <- print(table1[[1]], showAllLevels = TRUE, noSpaces = TRUE,
+              printToggle = FALSE)
+tA1_2 <- print(table1[[2]], showAllLevels = TRUE, noSpaces = TRUE,
+              printToggle = FALSE)
+tA1_3 <- print(table1[[3]], showAllLevels = TRUE, noSpaces = TRUE,
+              printToggle = FALSE)
 
 # #############################################################################
 # Table 2 and 3.
@@ -88,8 +116,13 @@ analysis <- function(dta, sib, vacc_period){
   if (sib){
     d <- dta %>%
       group_by(lpnr_mor) %>%
-      filter(any(event)) %>%
-      ungroup()
+      filter(any(event))
+
+    if (vacc_period == 'VaccFull')    d <- d %>% filter(n_distinct(VaccFull) == 2)
+    if (vacc_period == 'Vacc22')    d <- d %>% filter(n_distinct(Vacc22) == 2)
+    if (vacc_period == 'Vacc14')    d <- d %>% filter(n_distinct(Vacc14) == 2)
+
+    d <- d %>% ungroup()
     
     crude <- paste(vacc_period, "strata(lpnr_mor)", sep = " + ")
     adjust <- paste(vacc_period, "SmokingAtFirstVisit", "MotherAgeAtBirth",
@@ -214,6 +247,17 @@ t3_0 <- table_HR(subanalysis = 0, sib = TRUE)
 t3_1 <- table_HR(subanalysis = 1, sib = TRUE)
 t3_2 <- table_HR(subanalysis = 2, sib = TRUE)
 t3_3 <- table_HR(subanalysis = 3, sib = TRUE)
+
+# #############################################################################
+# Write tables to disk..
+# #############################################################################
+# Save to a CSV file
+write.csv(t1_1, file = "../output/Table1.csv")
+write.csv(t1_2, file = "../output/Table1_pop.csv")
+write.csv(t1_3, file = "../output/Table1_sib.csv")
+write.csv(tA1_1, file = "../output/Table1A.csv")
+write.csv(tA1_2, file = "../output/Table1A_pop.csv")
+write.csv(tA1_3, file = "../output/Table1A_sib.csv")
 
 # Write table 2
 write.xlsx(t2_0, "../output/Table2.xlsx", sheetName = "Main analysis",
